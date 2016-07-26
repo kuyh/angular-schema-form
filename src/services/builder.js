@@ -111,7 +111,15 @@ angular.module('schemaForm').provider('sfBuilder', ['sfPathProvider', function(s
                        '.condition, { model: model, "arrayIndex": $index})';
         if (args.form.key) {
           var strKey = sfPathProvider.stringify(args.form.key);
+          var arrayDepth = args.form.key.filter(function(e) { return e === '' }).length;
+          var arrayIndices = (arrayDepth > 1 ? Array(arrayDepth - 1).join('$parent.$parent.$parent.') + '$parent.$parent.$index,' : '');
+          for (var i = arrayDepth; i > 2; i--) {
+            arrayIndices += Array(i - 1).join('$parent.$parent.$parent.') + '$index,';
+          }
+          arrayIndices += '$index';
+
           evalExpr = 'evalExpr(' + args.path + '.condition,{ model: model, "arrayIndex": $index, ' +
+                     '"arrayIndices": [' + arrayIndices + '],' +
                      '"modelValue": model' + (strKey[0] === '[' ? '' : '.') + strKey + '})';
         }
 
