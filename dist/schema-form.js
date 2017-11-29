@@ -178,8 +178,15 @@ angular.module('schemaForm').provider('sfBuilder', ['sfPathProvider', function(s
                        '.condition, { model: model, "arrayIndex": $index})';
         if (args.form.key) {
           var strKey = sfPathProvider.stringify(args.form.key);
+          var arrayDepth = args.form.key.filter(function(e) { return e === '' }).length;
+          var arrayIndices = '$index';
+          for (var i = 1; i < arrayDepth; i++) {
+            arrayIndices = Array(i + 1).join('$parent.$parent.') + '$index,' + arrayIndices;
+          }
+
           evalExpr = 'evalExpr(' + args.path + '.condition,{ model: model, "arrayIndex": $index, ' +
-                     '"modelValue": model' + (strKey[0] === '[' ? '' : '.') + strKey + '})';
+            '"arrayIndices": [' + arrayIndices + '],' +
+            '"modelValue": model' + (strKey[0] === '[' ? '' : '.') + strKey + '})';
         }
 
         var children = args.fieldFrag.children || args.fieldFrag.childNodes;
@@ -425,14 +432,16 @@ angular.module('schemaForm').provider('schemaFormDecorators',
             };
 
             scope.buttonClick = function($event, form) {
+              var arrayIndices = form.key.filter(function(e) { return e === parseInt(e, 10)});
+
               if (angular.isFunction(form.onClick)) {
-                form.onClick($event, form);
+                form.onClick($event, form, arrayIndices[arrayIndices.length-1], arrayIndices);
               } else if (angular.isString(form.onClick)) {
                 if (sfSchema) {
                   //evaluating in scope outside of sfSchemas isolated scope
-                  sfSchema.evalInParentScope(form.onClick, {'$event': $event, form: form});
+                  sfSchema.evalInParentScope(form.onClick, {'$event': $event, form: form, arrayIndex: arrayIndices[arrayIndices.length-1], arrayIndices: arrayIndices});
                 } else {
-                  scope.$eval(form.onClick, {'$event': $event, form: form});
+                  scope.$eval(form.onClick, {'$event': $event, form: form, arrayIndex: arrayIndices[arrayIndices.length-1], arrayIndices: arrayIndices});
                 }
               }
             };
@@ -558,7 +567,7 @@ angular.module('schemaForm').provider('schemaFormDecorators',
 
                     var evalExpr = 'evalExpr(form.condition,{ model: model, "arrayIndex": arrayIndex})';
                     if (form.key) {
-                      evalExpr = 'evalExpr(form.condition,{ model: model, "arrayIndex": arrayIndex, "modelValue": model' + sfPath.stringify(form.key) + '})';
+                      evalExpr = 'evalExpr(form.condition,{ model: model, "arrayIndex": arrayIndex, "arrayIndices": [' + form.key.filter(function(e) { return e === parseInt(e, 10)}).toString() + '], "modelValue": model' + sfPath.stringify(form.key) + '})';
                     }
 
                     angular.forEach(element.children(), function(child) {
@@ -1389,7 +1398,7 @@ angular.module('schemaForm').provider('schemaForm',
         if (obj.type === 'checkbox' && angular.isUndefined(obj.schema['default'])) {
           obj.schema['default'] = false;
         }
-        
+
         // Special case: template type with tempplateUrl that's needs to be loaded before rendering
         // TODO: this is not a clean solution. Maybe something cleaner can be made when $ref support
         // is introduced since we need to go async then anyway
@@ -1972,14 +1981,23 @@ angular.module('schemaForm').directive('sfField',
             };
 
             scope.buttonClick = function($event, form) {
+              var arrayDepth = form.key.filter(function(e) { return e === '' }).length;
+              var arrayIndices = (arrayDepth > 1 ? Array(arrayDepth - 1).join('$parent.$parent.$parent.') + '$parent.$parent.$index,' : '');
+              for (var i = arrayDepth; i > 2; i--) {
+                arrayIndices += Array(i - 1).join('$parent.$parent.$parent.') + '$index,';
+              }
+              arrayIndices += '$index';
+              arrayIndices = scope.$eval('[' + arrayIndices + ']');
+
               if (angular.isFunction(form.onClick)) {
-                form.onClick($event, form);
+
+                form.onClick($event, form, arrayIndices[arrayDepth-1], arrayIndices);
               } else if (angular.isString(form.onClick)) {
                 if (sfSchema) {
                   //evaluating in scope outside of sfSchemas isolated scope
-                  sfSchema.evalInParentScope(form.onClick, {'$event': $event, form: form});
+                  sfSchema.evalInParentScope(form.onClick, {'$event': $event, form: form, arrayIndex: arrayIndices[arrayDepth-1], arrayIndices: arrayIndices});
                 } else {
-                  scope.$eval(form.onClick, {'$event': $event, form: form});
+                  scope.$eval(form.onClick, {'$event': $event, form: form, arrayIndex: '$index', arrayIndices: '[' + arrayIndices + ']'});
                 }
               }
             };
@@ -2824,8 +2842,8 @@ angular.module('schemaForm').directive('schemaValidate', ['sfValidator', '$parse
 
         // A bit ugly but useful.
         scope.validateField =  function(formName) {
-          
-          // If we have specified a form name, and this model is not within 
+
+          // If we have specified a form name, and this model is not within
           // that form, then leave things be.
           if(formName != undefined && ngModel.$$parentForm.$name !== formName) {
             return;
